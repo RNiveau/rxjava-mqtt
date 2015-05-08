@@ -1,0 +1,16 @@
+apply plugin: 'java'
+
+sourceCompatibility = 1.8
+version = '1.0'
+
+repositories {
+    mavenCentral()
+    maven {
+        url 'https://repo.eclipse.org/content/repositories/paho-releases/'
+    }
+}
+
+dependencies {
+    compile 'io.reactivex:rxjava:1.0.9', 'io.reactivex:rxjava-async-util:0.21.0', 'com.squareup.okhttp:okhttp:2.3.0', 'org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.0.2'
+    testCompile 'junit:junit:4.11'
+}
