@@ -1,8 +1,14 @@
-package test;
+package fr.xebia.rx;
 
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import fr.xebia.rx.json.Sensor;
 import org.eclipse.paho.client.mqttv3.*;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
+import rx.Observable;
+import rx.Subscriber;
+import rx.Subscription;
+import rx.observables.ConnectableObservable;
 
 import java.io.IOException;
 
@@ -11,6 +17,13 @@ import java.io.IOException;
  */
 class CallBack implements MqttCallback {
 
+    private Subscriber onSubscribe;
+
+    private ObjectMapper mapper = new ObjectMapper();
+
+    public CallBack(Subscriber<? super Sensor> onSubscribe) {
+        this.onSubscribe = onSubscribe;
+    }
 
     @Override
     public void connectionLost(Throwable throwable) {
@@ -19,7 +32,8 @@ class CallBack implements MqttCallback {
 
     @Override
     public void messageArrived(String s, MqttMessage mqttMessage) throws Exception {
-        System.out.println(new String(mqttMessage.getPayload()));
+        Sensor sensor = mapper.readValue(new String(mqttMessage.getPayload()), Sensor.class);
+        onSubscribe.onNext(sensor);
     }
 
     @Override
@@ -38,37 +52,43 @@ public class Main {
     static public void main(String[] args) throws IOException, InterruptedException, MqttException {
 
 
-        MqttClient sampleClient = new MqttClient("tcp://localhost:1883", "client", new MemoryPersistence());
-        MqttConnectOptions connOpts = new MqttConnectOptions();
-        connOpts.setCleanSession(true);
-        sampleClient.setCallback(new CallBack());
-        sampleClient.connect(connOpts);
-        System.out.println("Connected");
-        MqttMessage message = new MqttMessage("toto".getBytes());
-        message.setQos(2);
-        //  sampleClient.publish("topic", message);
-        System.out.println("Message published");
-        sampleClient.subscribe("topic");
-        System.out.println("Disconnected");
+        ConnectableObservable<Sensor> observable = Observable.create(new Observable.OnSubscribe<Sensor>() {
+            @Override
+            public void call(Subscriber<? super Sensor> subscriber) {
+                try {
+                    MqttClient sampleClient = new MqttClient("tcp://localhost:1883", "client", new MemoryPersistence());
+                    MqttConnectOptions connOpts = new MqttConnectOptions();
+                    connOpts.setCleanSession(true);
+                    sampleClient.setCallback(new CallBack(subscriber));
+                    sampleClient.connect(connOpts);
+                    System.out.println("Mqtt Connected");
+                    MqttMessage message = new MqttMessage("toto".getBytes());
+                    message.setQos(2);
+                    sampleClient.subscribe("topic");
+                    subscriber.onNext(new Sensor());
+                } catch (MqttException e) {
+                    e.printStackTrace();
+                }
+            }
+        }).publish();
 
-/*        Integer[] test = {1, 2, 3};
+        observable.subscribe(json -> System.out.println(json.getType() + ": " + json.getValue()));
+        Observable<Sensor> sound = observable.filter(json -> json.getType() != null && json.getType().equals("sound"));
+        Subscription subscribe = sound.subscribe(sensor -> System.out.println("Hey sound:" + sensor.getValue()),
+                e -> System.err.println(e));
 
-        rx.Observable<String> observable = rx.Observable.create(s -> {
-            s.onNext("toto");
-            s.onCompleted();
-        });
-        Observable<String> titi = observable.filter(s -> s.equals("titi"));
+        observable.connect();
+        observable.subscribe(json -> System.out.println("test"));
+        Integer[] test = {1, 2, 3};
 
-
-
-
-        titi.subscribe(s -> System.out.println(s));
-        observable.subscribe(s -> System.out.println(s));
-        observable.subscribe(s -> System.out.println(s));
-        observable.subscribe(s -> System.out.println(s));
+        Observable<Integer> observableInt = Observable.from(test);
+        //observableInt = observableInt.repeat(1000);
+        observableInt.subscribe(s -> System.out.println(s));
+        observableInt.subscribe(s -> System.out.println(s));
+        observableInt.subscribe(s -> System.out.println(s));
         // Exemple of chain of requests to get login
-        Observable<Void> start = Async.fromCallable(() -> {
- System.out.println("Start");
+        /*Observable<Void> start = Async.fromCallable(() -> {
+            System.out.println("Start");
             OkHttpClient client = new OkHttpClient();
             try {
                 Response response = client.newCall(new Request.Builder()
